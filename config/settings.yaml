@@ -1,0 +1,31 @@
+# Institutional configuration for WEGE3.SA fundamental analysis pipeline
+ticker: WEGE3.SA
+exchange: B3
+currency: BRL
+reporting_scale: millions
+fiscal_year_end: "12-31"
+analysis_window_years: 5
+
+valuation:
+  # Cost of equity inputs (CAPM)
+  risk_free_rate: 0.1175          # Long-run Selic / IPCA+ proxy
+  equity_risk_premium: 0.055      # Market ERP for Brazil
+  beta: 0.95                      # Levered beta vs. Ibovespa
+  target_debt_ratio: 0.15         # Target D / (D + E)
+  cost_of_debt_spread: 0.025      # Spread over risk-free for local debt
+  terminal_growth_rate: 0.045     # Perpetuity growth (Gordon)
+  projection_years: 5             # Explicit forecast horizon
+
+fx:
+  usdbrl_base: 5.10               # Base BRL/USD exchange rate
+  usdbrl_shock_up: 5.80           # Adverse FX scenario (BRL depreciation)
+  usdbrl_shock_down: 4.40         # Favorable FX scenario (BRL appreciation)
+
+selic:
+  base: 0.1175                    # Base Selic rate (a.a.)
+  shock_up: 0.1425                # Tightening scenario (+250 bps)
+  shock_down: 0.0925              # Easing scenario (-250 bps)
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed

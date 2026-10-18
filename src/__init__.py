@@ -1,0 +1,3 @@
+"""WEG S.A. fundamental analysis pipeline package."""
+
+__version__ = "1.0.0"
