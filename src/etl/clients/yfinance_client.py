@@ -1,4 +1,4 @@
-"""Yahoo Finance client for prices and reported financials."""
+"""Yahoo Finance client for prices and reported financials (no API key required)."""
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -41,7 +41,6 @@ class YFinanceClient(BaseClient):
     def __init__(self, config: Optional[ClientConfig] = None) -> None:
         cfg = config or ClientConfig(
             base_url="https://query1.finance.yahoo.com",
-            mock_mode=False,
             rate_limit_per_second=1.0,
         )
         super().__init__(cfg)
@@ -50,7 +49,7 @@ class YFinanceClient(BaseClient):
         return {}
 
     def _mock(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        raise NotImplementedError("YFinance needs live data.")
+        raise NotImplementedError("YFinance client does not support mock mode.")
 
     def fetch_prices(self, ticker: str, period: str = "5y") -> PriceFrame:
         tk = yf.Ticker(ticker)
@@ -65,6 +64,7 @@ class YFinanceClient(BaseClient):
         return PriceFrame(ticker=ticker, prices=df, info=tk.info or {})
 
     def fetch_annual_statements(self, ticker: str) -> Dict[str, pd.DataFrame]:
+        """Extrai DRE, balanço e fluxo de caixa do yfinance (sem API key)."""
         tk = yf.Ticker(ticker)
         out: Dict[str, pd.DataFrame] = {}
         for name, attr in (

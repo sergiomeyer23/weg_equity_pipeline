@@ -2,6 +2,7 @@
 
 Internally consistent 5-year income statement, balance sheet, and cash flow.
 Figures are in BRL millions and roughly match WEG's order of magnitude.
+MOVIDO DE src/etl/clients/mocks.py — código em src/ não pode conter dados inventados.
 """
 
 from dataclasses import dataclass

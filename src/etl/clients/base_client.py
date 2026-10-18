@@ -21,7 +21,6 @@ class ClientConfig:
         max_retries: int = 3,
         backoff_factor: float = 0.5,
         rate_limit_per_second: float = 1.0,
-        mock_mode: bool = False,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
@@ -29,7 +28,10 @@ class ClientConfig:
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.rate_limit_per_second = rate_limit_per_second
-        self.mock_mode = mock_mode
+
+    @property
+    def requires_api_key(self) -> bool:
+        return self.api_key is not None
 
 
 class BaseClient(ABC):
@@ -70,14 +72,15 @@ class BaseClient(ABC):
             time.sleep(interval - elapsed)
 
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        if self.config.mock_mode:
-            return self._mock(path, params or {})
-
         self._throttle()
         url = f"{self.config.base_url.rstrip('/')}/{path.lstrip('/')}"
         logger.info("GET %s", url)
         response = self._session.get(url, params=params, timeout=self.config.timeout)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            logger.error("HTTP error %s for %s: %s", response.status_code, url, exc)
+            raise
         self._last_call = time.time()
         return response.json()
 

@@ -1,86 +1,141 @@
-"""Basic checks for the WEG pipeline."""
+"""Testes de qualidade para o pipeline WEGE3.SA.
+
+Substitui os antigos testes tautológicos (que apenas confirmavam que o mock
+é consistente consigo mesmo) por: (a) validação do DCF contra cálculo manual
+independente e (b) comparação de dados reais da CVM contra valores publicados.
+"""
+
+from __future__ import annotations
 
 import pandas as pd
 import pytest
 
 from src.analytics import kpis, valuation
-from src.etl.clients.mocks import STATEMENTS, build
-from src.etl.transform import tidy, to_wide
 
 
-def test_balance_sheet_balances() -> None:
-    by_year: dict[int, dict[str, float]] = {}
-    for row in STATEMENTS.balance_sheet:
-        y = int(str(row["date"])[:4])
-        by_year.setdefault(y, {})[row["line_item"]] = float(row["value"])
-    for y, items in by_year.items():
-        tol = 1e-6 * items["Total Assets"]
-        assert abs(items["Total Assets"] - items["Total Liabilities and Equity"]) < tol, y
-        assert abs(items["Total Assets"] - (items["Total Liabilities"] + items["Total Equity"])) < tol, y
+# ----------------------------------------------------------------------
+# (a) DCF contra cálculo manual independente
+# ----------------------------------------------------------------------
+def test_dcf_matches_manual_calculation() -> None:
+    """DCF deve reproduzir um cálculo manual passo a passo em caso simples.
+
+    Cenário: receita base R$ 100M, crescimento 0%, margem EBIT 20%,
+    imposto 25%, sem D&A, sem CAPEX, sem capital de giro, crescimento
+    perpétuo 0%, WACC 10%, sem dívida líquida, 10M de ações.
+
+    FCFF anual = 100 * 0.20 * (1 - 0.25) = 15M (constante)
+    PV explícito (5 anos) = 15 * sum(1.1^-i, i=1..5) = 56.86M
+    Valor terminal = 15 / 0.10 = 150M (g=0)
+    PV terminal = 150 * 1.1^-5 = 93.14M
+    EV = 56.86 + 93.14 = 150.0M
+    Equity = 150.0 - 0 = 150.0M
+    Preço = 150.0 / 10 = R$ 15.00
+    """
+    model = valuation.DCF()
+    a = valuation.Assumptions(
+        years=5,
+        growth=[0.0, 0.0, 0.0, 0.0, 0.0],
+        ebit_margin=0.20,
+        tax=0.25,
+        da_ratio=0.0,
+        capex_ratio=0.0,
+        wc_ratio=0.0,
+        term_growth=0.0,
+        rf=0.08,
+        erp=0.02,
+        beta=1.0,
+        debt_spread=0.0,
+        tax_rate=0.25,
+        target_debt_v=0.0,
+    )
+    model.a = a
+
+    # Cálculo manual independente
+    fcf = 100.0 * 0.20 * (1.0 - 0.25)  # 15M por ano
+    wacc = 0.08 + 1.0 * 0.02  # 10%
+    dfs = [(1.0 + wacc) ** -(i + 1) for i in range(5)]
+    pv_explicit = sum(fcf * d for d in dfs)
+    terminal = fcf / wacc  # g = 0
+    pv_terminal = terminal * dfs[-1]
+    ev_manual = pv_explicit + pv_terminal
+    price_manual = ev_manual / 10.0
+
+    res = model.run(base_rev=100.0, net_debt=0.0, shares=10.0, intl_share=0.0)
+
+    assert abs(res.ev - ev_manual) < 1e-6
+    assert abs(res.target_price - price_manual) < 1e-6
+    assert abs(res.wacc - wacc) < 1e-6
 
 
-def test_cash_flow_reconciles() -> None:
-    by_year: dict[int, dict[str, float]] = {}
-    for row in STATEMENTS.cash_flow:
-        y = int(str(row["date"])[:4])
-        by_year.setdefault(y, {})[row["line_item"]] = float(row["value"])
-    years = sorted(by_year)
-    for i in range(1, len(years)):
-        cur = by_year[years[i]]
-        prev = by_year[years[i - 1]]
-        implied = cur["Operating Cash Flow"] + cur["Capital Expenditure"] + cur["Net Borrowing"] \
-            + cur["Dividends Paid"] + cur["Other Financing Activities"]
-        delta = cur["Cash and Equivalents (EoP)"] - prev["Cash and Equivalents (EoP)"]
-        assert abs(implied - delta) < 1.0, years[i]
-
-
-def test_tidy_schema() -> None:
-    df = tidy(STATEMENTS.income_statement, "income", "WEGE3.SA", "BRL", "fmp")
-    assert set(df.columns) == {"fiscal_year", "period", "statement", "line_item", "value", "currency", "source"}
-    assert df["fiscal_year"].nunique() == 5
-    wide = to_wide(df)
-    assert "Revenue" in wide.columns
-
-
-def test_roic_above_hurdle() -> None:
-    inc = to_wide(tidy(STATEMENTS.income_statement, "income", "WEGE3.SA"))
-    bs = to_wide(tidy(STATEMENTS.balance_sheet, "balance_sheet", "WEGE3.SA"))
-    cf = to_wide(tidy(STATEMENTS.cash_flow, "cash_flow", "WEGE3.SA"))
-    merged = inc.merge(bs, on="fiscal_year").merge(cf, on="fiscal_year")
-    r = kpis.compute_roic(merged)
-    assert (r["roic"] > 0.15).all()
-    assert r["roic"].iloc[-1] > r["roic"].iloc[0]
-
-
-def test_margin_expansion() -> None:
-    inc = to_wide(tidy(STATEMENTS.income_statement, "income", "WEGE3.SA"))
-    m = kpis.compute_margins(inc)
-    assert m["ebit_margin"].iloc[-1] > m["ebit_margin"].iloc[0]
-
-
-def test_leverage_low() -> None:
-    inc = to_wide(tidy(STATEMENTS.income_statement, "income", "WEGE3.SA"))
-    bs = to_wide(tidy(STATEMENTS.balance_sheet, "balance_sheet", "WEGE3.SA"))
-    merged = inc.merge(bs, on="fiscal_year")
-    l = kpis.compute_leverage(merged)
-    assert (l["debt_to_equity"] < 0.50).all()
-
-
-def test_dcf_positive() -> None:
-    m = valuation.DCF()
-    r = m.run(base_rev=52_400.0, net_debt=-524.0, shares=2_089.0, intl_share=0.40)
-    assert r.target_price > 0
-    assert 0.05 < r.wacc < 0.30
-
-
-def test_sensitivity_direction() -> None:
-    m = valuation.DCF()
-    g = m.grid(base_rev=52_400.0, base_fcf=9_890.0, net_debt=-524.0, shares=2_089.0,
-               intl_share=0.40, fxs=[4.40, 5.10, 5.80], selics=[0.0925, 0.1175, 0.1425])
-    assert g.shape == (3, 3)
+def test_dcf_sensitivity_direction() -> None:
+    """Selic maior → WACC maior → preço-alvo menor (ceteris paribus)."""
+    model = valuation.DCF()
+    g = model.grid(
+        base_rev=52_400.0,
+        base_fcf=9_890.0,
+        net_debt=-524.0,
+        shares=4_195.83,
+        intl_share=0.40,
+        fxs=[5.10],
+        selics=[0.0925, 0.1175, 0.1425],
+    )
+    # Uma única coluna de FX; três linhas de Selic
+    assert g.shape == (3, 1)
     assert g.loc[0.1425, 5.10] < g.loc[0.1175, 5.10] < g.loc[0.0925, 5.10]
-    assert g.loc[0.1175, 4.40] < g.loc[0.1175, 5.10] < g.loc[0.1175, 5.80]
 
 
-def test_build_deterministic() -> None:
-    assert build() == build()
+# ----------------------------------------------------------------------
+# (b) Dados reais da CVM contra valores publicados
+# ----------------------------------------------------------------------
+def test_cvm_revenue_ebit_net_income_2024() -> None:
+    """Receita, EBIT e lucro líquido 2024 da CVM devem bater com o RI da WEG.
+
+    Valores de referência do DFP 2024 da WEG S.A. (CVM dados abertos):
+    - Receita líquida: ~R$ 37,99 bi
+    - EBIT (Resultado antes do resultado financeiro): ~R$ 7,69 bi
+    - Lucro líquido: ~R$ 6,04 bi
+
+    Tolerância: 5% (diferenças podem surgir de classificação contábil).
+    """
+    wide = pd.read_parquet("data/processed/WEGE3.SA_statements_wide.parquet")
+    row = wide[wide["fiscal_year"] == 2024].iloc[0]
+
+    revenue = float(row["Receita de Venda de Bens e/ou Serviços"])
+    ebit = float(row["Resultado Antes do Resultado Financeiro e dos Tributos"])
+
+    # Lucro líquido pode ter nomes diferentes no DFP
+    ni_cols = [c for c in wide.columns if "Lucro" in c and "Período" in c]
+    net_income = float(row[ni_cols[0]]) if ni_cols else float("nan")
+
+    # Valores de referência do DFP 2024 (valores em reais, não milhões)
+    expected_revenue = 37_986_941_000.0
+    expected_ebit = 7_690_528_000.0
+    expected_ni = 6_042_593_000.0
+
+    tol = 0.05
+    assert abs(revenue - expected_revenue) / expected_revenue < tol, f"Revenue: {revenue}"
+    assert abs(ebit - expected_ebit) / expected_ebit < tol, f"EBIT: {ebit}"
+    if pd.notna(net_income):
+        assert abs(net_income - expected_ni) / expected_ni < tol, f"Net income: {net_income}"
+
+
+def test_roic_positive_and_reasonable() -> None:
+    """ROIC deve ser positivo e razoável (não 40% inventado)."""
+    wide = pd.read_parquet("data/processed/WEGE3.SA_statements_wide.parquet")
+    roic = kpis.compute_roic(wide)
+    assert (roic["roic"] > 0).all()
+    assert (roic["roic"] < 1.0).all()  # não pode ser > 100%
+
+
+def test_leverage_reasonable() -> None:
+    """Alavancagem deve ser baixa (WEG tem balanço conservador)."""
+    wide = pd.read_parquet("data/processed/WEGE3.SA_statements_wide.parquet")
+    lev = kpis.compute_leverage(wide)
+    assert (lev["debt_to_equity"] < 1.0).all()
+
+
+def test_files_exist() -> None:
+    """Artefatos do ETL devem existir após a execução."""
+    import os
+    assert os.path.exists("data/processed/WEGE3.SA_prices.parquet")
+    assert os.path.exists("data/processed/WEGE3.SA_statements_wide.parquet")

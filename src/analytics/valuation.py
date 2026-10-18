@@ -22,7 +22,8 @@ class Assumptions:
     beta: float = 0.95
     debt_spread: float = 0.025
     tax_rate: float = 0.210
-    target_debt: float = 0.15
+    # target_debt_v = share of debt in total capital (D/V). D/V = 0.15 ~= D/E = 0.176.
+    target_debt_v: float = 0.15
 
 
 @dataclass
@@ -60,7 +61,7 @@ class DCF:
     def wacc(self, rf: Optional[float] = None, b: Optional[float] = None, d: Optional[float] = None) -> float:
         ke = self.ke(rf, b)
         kd = self.kd_after_tax(rf)
-        d = self.a.target_debt if d is None else d
+        d = self.a.target_debt_v if d is None else d
         return ke * (1.0 - d) + kd * d
 
     def run(
@@ -119,7 +120,7 @@ class DCF:
                 base = self.run(base_rev, base_fcf, net_debt, shares, intl_share, x, fx_base)
                 ke = s + self.a.beta * self.a.erp
                 kd = (s + self.a.debt_spread) * (1.0 - self.a.tax_rate)
-                d = self.a.target_debt
+                d = self.a.target_debt_v
                 w = ke * (1.0 - d) + kd * d
                 disc = [(1.0 + w) ** -(i + 1) for i in range(len(base.fcf))]
                 pv_exp = sum(c * d_ for c, d_ in zip(base.fcf, disc))
@@ -137,6 +138,6 @@ def bridge(r: DCFResult) -> pd.DataFrame:
         ("PV explicit FCFF", r.pv_explicit),
         ("PV terminal value", r.pv_terminal),
         ("Enterprise value", r.ev),
-        ("Less: net debt", r.equity - r.ev),
+        ("Less: net debt", r.ev - r.equity),
         ("Equity value", r.equity),
     ], columns=["item", "value"])

@@ -63,29 +63,30 @@ def main() -> None:
     rev = float(latest["Revenue"])
     fcf0 = float(latest["Free Cash Flow"])
     nd = float(lev_df.iloc[-1]["net_debt"])
-    sh = float(meta["shares_outstanding"].iloc[0])
-    if sh > 100_000:
-        sh /= 1e6
-    mc = float(meta["market_cap"].iloc[0] or 0.0)
-    if mc > 1e8:
-        mc /= 1e6
+    sh = float(meta["shares_outstanding"].iloc[0])  # contagem real de ações (yfinance)
     intl = float(geo_df.iloc[-1]["international_share"])
+    # Preço de mercado atual: último close da série de preços
+    px_series = prices.sort_values("date")
+    px_now = float(px_series["close"].iloc[-1]) if not px_series.empty else float("nan")
 
     res = model.run(base_rev=rev, base_fcf=fcf0, net_debt=nd, shares=sh, intl_share=intl)
+    upside = (res.target_price / px_now - 1.0) if pd.notna(px_now) and px_now > 0 else float("nan")
 
     with left:
         st.subheader("DCF summary")
-        st.metric("Target price", f"R$ {res.target_price:.2f}")
+        st.metric("Preço de mercado (último close)", f"R$ {px_now:.2f}" if pd.notna(px_now) else "n/a")
+        st.metric("Target price (DCF)", f"R$ {res.target_price:.2f}", delta=f"{upside:.1%}" if pd.notna(upside) else None)
         st.metric("Enterprise value", f"R$ {res.ev:,.0f}M")
         st.metric("Equity value", f"R$ {res.equity:,.0f}M")
         st.metric("WACC", f"{res.wacc:.2%}")
-        st.metric("Cost of equity", f"{res.ke:.2%}")
+        st.metric("Cost of equity (CAPM)", f"{res.ke:.2%}")
         st.metric("After-tax cost of debt", f"{res.kd_at:.2%}")
+        st.caption(f"Ações em circulação: {sh:,.0f} | Dívida líquida: R$ {nd:,.0f}M")
         st.plotly_chart(charts.bridge(valuation.bridge(res)), use_container_width=True)
 
     with right:
         st.subheader("Sensitivity — target price (R$)")
-        st.caption("Selic moves WACC; USD/BRL moves international revenue translation.")
+        st.caption("Selic move WACC; USD/BRL move tradução da receita internacional em BRL.")
         grid = model.grid(base_rev=rev, base_fcf=fcf0, net_debt=nd, shares=sh, intl_share=intl,
                           fxs=[4.40, 4.80, 5.10, 5.50, 5.80],
                           selics=[0.0925, 0.1075, 0.1175, 0.1325, 0.1425])
