@@ -28,14 +28,14 @@ def save_figure(fig, name: str, width: int = 1100, height: int = 560) -> None:
     fig.write_html(FIGS / f"{name}.html", include_plotlyjs="cdn", full_html=True)
     try:
         fig.write_image(FIGS / f"{name}.png", width=width, height=height, scale=2)
-        print(f"  ✓ {name}.png + .html")
+        print(f"  ok {name}.png + .html")
     except Exception:  # kaleido/Chrome missing
-        print(f"  ✓ {name}.html (PNG skipped: install 'kaleido' and Chrome to export images)")
+        print(f"  ok {name}.html (PNG skipped: install 'kaleido' and Chrome to export images)")
 
 
 def save_table(df, name: str) -> None:
     df.to_csv(TABLES / f"{name}.csv", index=False, encoding="utf-8-sig")
-    print(f"  ✓ {name}.csv")
+    print(f"  ok {name}.csv")
 
 
 def main() -> int:

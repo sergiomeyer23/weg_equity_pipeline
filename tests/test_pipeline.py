@@ -79,7 +79,7 @@ def test_dcf_matches_manual_calculation() -> None:
 
 
 def test_dcf_sensitivity_direction() -> None:
-    """Higher Selic → higher WACC → lower target price (ceteris paribus)."""
+    """Higher Selic means higher WACC and a lower target price."""
     model = valuation.DCF()
     g = model.grid(
         base_rev=52_400.0,

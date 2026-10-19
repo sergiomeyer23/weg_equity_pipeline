@@ -1,9 +1,4 @@
-"""ETL entry point for WEGE3.SA.
-
-Default sources (no API key): yfinance for prices and statements;
-CVM open data for WEG's income statement / balance sheet / cash flow.
-FMP and Brapi are only used when an API key is configured.
-"""
+"""ETL entry point. CVM + yfinance by default; FMP/Brapi only if an API key is set."""
 
 import argparse
 import json

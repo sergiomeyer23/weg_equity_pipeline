@@ -15,7 +15,7 @@ from src import data, report
 from src.analytics import market, valuation
 from src.viz import charts
 
-st.set_page_config(page_title="WEG | Fundamental Analysis", page_icon="⚡",
+st.set_page_config(page_title="WEG | Fundamental Analysis", page_icon=None,
                    layout="wide", initial_sidebar_state="expanded")
 
 st.markdown(
@@ -65,7 +65,7 @@ all_years = [int(y) for y in ds.wide["fiscal_year"]]
 # --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
-st.sidebar.title("⚡ WEG Analytics")
+st.sidebar.title("WEG Analytics")
 st.sidebar.caption("WEGE3.SA | B3 | Capital goods")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Filters")
@@ -83,7 +83,7 @@ px_now = float(ds.prices["close"].iloc[-1])
 st.sidebar.markdown("---")
 st.sidebar.caption("Values in **BRL millions** unless noted. Not investment advice.")
 
-st.title("⚡ WEG S.A. — Fundamental Analysis")
+st.title("WEG S.A. - Fundamental Analysis")
 if ds.synthetic:
     st.markdown(
         "<div class='warn-box'><b>Synthetic data.</b> This dashboard is reading the test fixture "
@@ -116,7 +116,7 @@ beta = st.sidebar.slider("Beta", 0.6, 1.4, base_a.beta, 0.05)
 assump = replace(base_a, ebit_margin=ebit_margin, rf=selic, term_growth=term_g, beta=beta)
 
 tab_ov, tab_prof, tab_bal, tab_val, tab_mkt, tab_data = st.tabs(
-    ["📈 Overview", "💰 Profitability", "🏦 Balance sheet & cash", "🎯 Valuation (DCF)", "📉 Market", "🗂️ Data"]
+    ["Overview", "Profitability", "Balance sheet & cash", "Valuation (DCF)", "Market", "Data"]
 )
 
 # --------------------------------------------------------------------------- #

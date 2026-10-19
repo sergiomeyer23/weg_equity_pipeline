@@ -1,11 +1,4 @@
-"""CVM open-data client (no API key required).
-
-Downloads DFP (standardised annual financial statements) from the open-data portal
-CVM: https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/
-
-Layout: dfp_cia_aberta_YYYY.zip containing CSVs for DRE, BPP, DFC, etc.
-WEG S.A.: CNPJ 84.429.695/0001-11
-"""
+"""Pulls WEG's annual statements (DFP) from the CVM open data portal. No API key needed."""
 
 from __future__ import annotations
 

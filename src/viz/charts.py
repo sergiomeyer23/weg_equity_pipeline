@@ -154,7 +154,7 @@ def annual_returns(df: pd.DataFrame) -> go.Figure:
 
 
 def bridge(df: pd.DataFrame) -> go.Figure:
-    fig = _fig("DCF bridge: enterprise value → equity value", "BRL millions", hovermode="closest")
+    fig = _fig("DCF bridge: enterprise value to equity value", "BRL millions", hovermode="closest")
     fig.add_trace(go.Waterfall(
         measure=["relative", "relative", "total", "relative", "total"],
         x=df["item"], y=df["value"], text=[f"BRL {v:,.0f}M" for v in df["value"]], textposition="outside",
