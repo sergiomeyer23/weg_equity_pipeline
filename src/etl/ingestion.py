@@ -89,6 +89,13 @@ def extract_fundamentals_real(
         # Drop duplicates: same account + date, keep the largest absolute value
         df = df.sort_values("value", key=lambda s: s.abs(), ascending=False)
         df = df.drop_duplicates(subset=["fiscal_date", "account_code"], keep="first")
+        if stmt == "cash_flow":
+            # Investing-section capex lines share their names with balance sheet items
+            # ("Imobilizado"), which would collide in the wide table. Rename them here.
+            df["account_desc"] = df["account_desc"].replace({
+                "Imobilizado": "Capital Expenditure",
+                "Intangível": "Capital Expenditure (Intangibles)",
+            })
         rows = (
             df[["fiscal_date", "value", "account_desc", "statement", "source"]]
             .rename(columns={"fiscal_date": "date", "account_desc": "line_item"})

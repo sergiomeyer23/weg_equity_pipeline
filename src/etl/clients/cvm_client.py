@@ -13,6 +13,7 @@ import io
 import logging
 import re
 import zipfile
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -71,6 +72,11 @@ class CvmClient:
                 for name in zf.namelist():
                     if not name.lower().endswith(".csv"):
                         continue
+                    # Consolidated statements only: the _ind_ files are parent-company
+                    # numbers (equity-method income, intercompany dividends) and DRA is
+                    # comprehensive income, neither of which belongs next to the DRE/BP/DFC.
+                    if "_ind" in name.lower() or "_DRA_" in name.upper():
+                        continue
                     upper = name.upper()
                     stmt_type = None
                     for key, val in _STATEMENT_PREFIX.items():
@@ -110,7 +116,10 @@ class CvmClient:
     def fetch_annual_statements(self, years: Optional[List[int]] = None) -> Dict[str, pd.DataFrame]:
         """Extract income statement, balance sheet and cash flow for WEG from CVM, for the available years."""
         if years is None:
-            years = [2024, 2023, 2022, 2021, 2020]
+            # DFP for year N is filed in early N+1, so the latest candidate is last year.
+            # Years that aren't published yet just fail the download and get skipped.
+            last = date.today().year - 1
+            years = list(range(last, last - 6, -1))
 
         combined: Dict[str, List[pd.DataFrame]] = {"income": [], "balance_sheet": [], "cash_flow": []}
 
@@ -127,6 +136,9 @@ class CvmClient:
                 val_col = self._first_col(weg_df, _COLUMN_ALIASES["value"])
                 if date_col is None or val_col is None:
                     continue
+                # Each filing repeats the prior year as "PENÚLTIMO"; keep the current year only.
+                if "ORDEM_EXERC" in weg_df.columns:
+                    weg_df = weg_df[weg_df["ORDEM_EXERC"].astype(str).str.upper().str.startswith("ÚLTIMO")]
                 result = weg_df[[date_col, val_col, "CD_CONTA", "DS_CONTA"]].copy()
                 result.columns = ["fiscal_date", "value", "account_code", "account_desc"]
                 result["fiscal_date"] = pd.to_datetime(result["fiscal_date"], errors="coerce")

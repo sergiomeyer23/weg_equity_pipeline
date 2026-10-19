@@ -142,7 +142,13 @@ def compute_fcf_yield(df: pd.DataFrame, market_cap: float) -> pd.DataFrame:
         year = int(row["fiscal_year"])
         fcf = _get(df, year, LINE["fcf"])
         if fcf is None:
-            continue
+            # CVM has no FCF line, so build it: operating cash flow less capex (PP&E + intangibles)
+            ocf = _get(df, year, LINE["operating_cf"])
+            if ocf is None:
+                continue
+            capex = _get(df, year, ["Capital Expenditure"]) or 0.0
+            capex_int = _get(df, year, ["Capital Expenditure (Intangibles)"]) or 0.0
+            fcf = ocf - abs(capex) - abs(capex_int)
         rows.append({
             "fiscal_year": year,
             "free_cash_flow": fcf,
