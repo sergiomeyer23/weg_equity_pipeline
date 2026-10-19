@@ -8,11 +8,13 @@ Streamlit dashboard with Selic × BRL/USD sensitivity.
 
 ## Contents
 
-- `src/etl/` — ingestion from yfinance and mock FMP / Brapi endpoints
+- `src/etl/` — ingestion from yfinance, CVM open data and (optional, with API key) FMP / Brapi
 - `src/analytics/` — ROIC, margins, leverage, FCF yield, DCF model
 - `src/viz/` — Plotly exhibits
 - `app.py` — Streamlit dashboard
-- `tests/` — 9 unit tests (balance sheet, cash flow, DCF, sensitivity)
+- `tests/` — DCF vs. manual calculation, sensitivity direction, and KPI sanity
+  checks on processed data (tests skip if the ETL has not been run; the CVM
+  reference test runs only on real data, i.e. without `--mock`)
 - `config/settings.yaml` — WACC, FX, and Selic scenario parameters
 
 ## Run it
@@ -26,8 +28,8 @@ pytest tests/
 
 ## What it does
 
-- Downloads daily OHLCV for WEGE3.SA (yfinance)
-- Pulls annual income statement, balance sheet, and cash flow (mock FMP/Brapi)
+- Live mode (`--live`): daily OHLCV from yfinance, statements from CVM/yfinance
+- `--mock`: fully offline, synthetic prices and statements from `tests/fixtures/`
 - Tidies JSON into relational Parquet frames
 - Computes ROIC, margins, debt ratios, FCF yield, and revenue geography
 - Runs a DCF with Gordon-growth terminal value and a target-price sensitivity

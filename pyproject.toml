@@ -20,6 +20,7 @@ dependencies = [
     "scipy>=1.10.0",
     "pyyaml>=6.0.1",
     "openpyxl>=3.1.0",
+    "pyarrow>=14.0.0",
 ]
 
 [project.optional-dependencies]
@@ -32,4 +33,6 @@ target-version = ["py310"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "F", "B", "I", "N"]

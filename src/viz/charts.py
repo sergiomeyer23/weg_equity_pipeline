@@ -22,10 +22,10 @@ _BASE = dict(
 )
 
 
-def roic(df: pd.DataFrame) -> go.Figure:  # type: ignore[name-defined]
+def roic(df: pd.DataFrame, wacc: float = 0.16) -> go.Figure:  # type: ignore[name-defined]
     fig = go.Figure()
     fig.add_trace(go.Bar(x=df["fiscal_year"], y=df["roic"] * 100, name="ROIC", marker_color=NAVY))
-    fig.add_trace(go.Scatter(x=df["fiscal_year"], y=[16.0] * len(df), mode="lines", name="WACC hurdle",
+    fig.add_trace(go.Scatter(x=df["fiscal_year"], y=[wacc * 100] * len(df), mode="lines", name="WACC hurdle",
                              line=dict(color=RED, width=2, dash="dash")))
     fig.update_layout(title="Return on Invested Capital (ROIC)", xaxis_title="Fiscal year",
                       yaxis_title="ROIC (%)", yaxis=dict(ticksuffix="%"), **_BASE)

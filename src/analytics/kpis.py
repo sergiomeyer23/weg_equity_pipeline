@@ -97,12 +97,13 @@ def compute_margins(df: pd.DataFrame) -> pd.DataFrame:
         rev = _get(df, year, LINE["revenue"])
         ebit = _get(df, year, LINE["ebit"])
         ni = _get(df, year, LINE["net_income"])
+        cogs = _get(df, year, LINE["cost_of_revenue"])
         if rev is None or rev == 0:
             continue
         rows.append({
             "fiscal_year": year,
             "revenue": rev,
-            "gross_margin": float("nan"),
+            "gross_margin": (rev - abs(cogs)) / rev if cogs is not None else float("nan"),
             "ebit_margin": ebit / rev if ebit is not None else float("nan"),
             "net_margin": ni / rev if ni is not None else float("nan"),
         })

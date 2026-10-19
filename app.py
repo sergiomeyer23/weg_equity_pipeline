@@ -29,6 +29,10 @@ def main() -> None:
     st.caption("B3 | Industrials | BRL millions unless noted | Quantitative equity research")
     st.divider()
 
+    if not (DATA / f"{TICKER}_statements_wide.parquet").exists():
+        st.error("Dados processados não encontrados. Rode: `python -m src.etl.ingestion --mock`")
+        st.stop()
+
     wide = load("statements_wide")
     prices = load("prices")
     meta = load("metadata")
@@ -99,7 +103,7 @@ def main() -> None:
     st.header("Fundamental KPIs")
     a, b = st.columns(2)
     with a:
-        st.plotly_chart(charts.roic(roic_df), use_container_width=True)
+        st.plotly_chart(charts.roic(roic_df, wacc=res.wacc), use_container_width=True)
         st.plotly_chart(charts.leverage(lev_df), use_container_width=True)
     with b:
         st.plotly_chart(charts.margins(marg_df), use_container_width=True)

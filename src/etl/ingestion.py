@@ -177,7 +177,8 @@ def transform_all(
             fundamentals.get(f"cvm_{stmt}")
             or fundamentals.get(f"yf_{stmt}")
             or fundamentals.get(f"fmp_{stmt}")
-            or fundamentals.get(f"brapi_{stmt}", [])
+            or fundamentals.get(f"brapi_{stmt}")
+            or fundamentals.get(f"mock_{stmt}", [])
         )
         frames[stmt] = tidy(rows, stmt, ticker, currency=currency, source="cvm_or_yf")
         save_parquet(frames[stmt], processed_dir / f"{ticker}_{stmt}.parquet")
@@ -236,22 +237,20 @@ def run(ticker: str, period: str, mock: bool, config_path: Path, output: Path) -
     yf, cvm, fmp, brapi = build_clients(config, ticker, mock)
 
     if mock:
-        logger.warning("Modo MOCK ativado — dados sintéticos de tests/fixtures/mocks.py")
-        from tests.fixtures.mocks import STATEMENTS as MOCK_STATEMENTS  # noqa: PLC0415
-        # Converte o fixture para o formato esperado pelo transform
-        fundamentals: Dict[str, List[dict]] = {}
-        for stmt in STATEMENTS:
-            rows = getattr(MOCK_STATEMENTS, f"{stmt}_statement", [])
-            # Reorganiza para o formato de lista de dicts que o transform entende
-            fundamentals[f"mock_{stmt}"] = rows
-        price_frame = extract_prices(yf, ticker, period, raw)
-        result = transform_all(
-            price_frame,
-            {k: v for k, v in fundamentals.items()},
-            ticker,
-            config.get("currency", "BRL"),
-            processed,
-        )
+        logger.warning("Modo MOCK ativado — dados sintéticos de tests/fixtures/mocks.py (offline)")
+        from tests.fixtures import mocks  # noqa: PLC0415
+
+        fundamentals: Dict[str, List[dict]] = {
+            "mock_income": mocks.STATEMENTS.income_statement,
+            "mock_balance_sheet": mocks.STATEMENTS.balance_sheet,
+            "mock_cash_flow": mocks.STATEMENTS.cash_flow,
+        }
+        price_frame = mocks.price_frame(period)
+        result = transform_all(price_frame, fundamentals, ticker, config.get("currency", "BRL"), processed)
+        geo = tidy(mocks.STATEMENTS.geographic_revenue, "geographic_revenue", ticker,
+                   currency=config.get("currency", "BRL"), source="mock")
+        result["geographic_revenue"] = geo
+        save_parquet(geo, processed / f"{ticker}_geographic_revenue.parquet")
     else:
         price_frame = extract_prices(yf, ticker, period, raw)
         fundamentals = extract_fundamentals_real(cvm, yf, ticker, raw)

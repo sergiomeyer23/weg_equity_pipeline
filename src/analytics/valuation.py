@@ -73,6 +73,7 @@ class DCF:
         intl_share: float = 0.40,
         fx: Optional[float] = None,
         fx_base: float = 5.10,
+        rf: Optional[float] = None,
     ) -> DCFResult:
         a = self.a
         fx = fx if fx is not None else fx_base
@@ -92,7 +93,9 @@ class DCF:
             wc = rev * a.wc_ratio
             fcfs.append(nopat + da - capex - wc)
 
-        w = self.wacc()
+        w = self.wacc(rf)
+        if w <= a.term_growth:
+            raise ValueError(f"WACC ({w:.2%}) deve ser maior que o crescimento terminal ({a.term_growth:.2%}).")
         disc = [(1.0 + w) ** -(i + 1) for i in range(len(fcfs))]
         pv_exp = sum(c * d for c, d in zip(fcfs, disc))
         term = fcfs[-1] * (1.0 + a.term_growth) / (w - a.term_growth)
@@ -101,7 +104,7 @@ class DCF:
         ev = pv_exp + pv_term
         eq = ev - net_debt
         price = eq / shares if shares else float("nan")
-        return DCFResult(price, ev, eq, w, self.ke(), self.kd_after_tax(), term, pv_term, pv_exp, fcfs, revs, disc)
+        return DCFResult(price, ev, eq, w, self.ke(rf), self.kd_after_tax(rf), term, pv_term, pv_exp, fcfs, revs, disc)
 
     def grid(
         self,
@@ -117,18 +120,8 @@ class DCF:
         recs: List[Dict[str, Any]] = []
         for s in selics:
             for x in fxs:
-                base = self.run(base_rev, base_fcf, net_debt, shares, intl_share, x, fx_base)
-                ke = s + self.a.beta * self.a.erp
-                kd = (s + self.a.debt_spread) * (1.0 - self.a.tax_rate)
-                d = self.a.target_debt_v
-                w = ke * (1.0 - d) + kd * d
-                disc = [(1.0 + w) ** -(i + 1) for i in range(len(base.fcf))]
-                pv_exp = sum(c * d_ for c, d_ in zip(base.fcf, disc))
-                pv_term = base.fcf[-1] * (1.0 + self.a.term_growth) / (w - self.a.term_growth) * disc[-1]
-                ev = pv_exp + pv_term
-                eq = ev - net_debt
-                price = eq / shares if shares else float("nan")
-                recs.append({"selic": s, "fx": x, "wacc": w, "price": price, "ev": ev, "eq": eq})
+                r = self.run(base_rev, base_fcf, net_debt, shares, intl_share, x, fx_base, rf=s)
+                recs.append({"selic": s, "fx": x, "wacc": r.wacc, "price": r.target_price})
         df = pd.DataFrame(recs)
         return df.pivot(index="selic", columns="fx", values="price").sort_index(ascending=False)
 

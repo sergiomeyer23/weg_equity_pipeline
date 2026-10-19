@@ -225,3 +225,34 @@ def build() -> Statements:
 
 
 STATEMENTS = build()
+
+
+def price_frame(period: str = "5y", seed: int = 42):
+    """Série de preços sintética (random walk determinístico) para uso offline."""
+    import numpy as np
+    import pandas as pd
+
+    from src.etl.clients.yfinance_client import PriceFrame
+
+    years = int(period[:-1]) if period.endswith("y") and period[:-1].isdigit() else 5
+    dates = pd.bdate_range(end=pd.Timestamp("2024-12-31"), periods=252 * years)
+    rng = np.random.default_rng(seed)
+    close = np.exp(np.cumsum(rng.normal(0.0002, 0.015, len(dates))))
+    close = close / close[-1] * STATEMENTS.profile.price
+    df = pd.DataFrame({
+        "ticker": TICKER,
+        "date": dates,
+        "open": close * 0.998,
+        "high": close * 1.01,
+        "low": close * 0.99,
+        "close": close,
+        "adjusted_close": close,
+        "volume": rng.integers(5_000_000, 20_000_000, len(dates)).astype(float),
+    })
+    p = STATEMENTS.profile
+    info = {
+        "shortName": p.short_name, "longName": p.long_name, "sector": p.sector,
+        "industry": p.industry, "marketCap": p.market_cap,
+        "sharesOutstanding": p.shares_outstanding, "beta": p.beta,
+    }
+    return PriceFrame(ticker=TICKER, prices=df, info=info)
