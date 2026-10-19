@@ -1,8 +1,8 @@
 """ETL entry point for WEGE3.SA.
 
-Fontes padrão (sem API key): yfinance para preços e demonstrações;
-CVM dados abertos para DRE/BPP/DFC da WEG.
-FMP e Brapi só são usados se houver API key configurada.
+Default sources (no API key): yfinance for prices and statements;
+CVM open data for WEG's income statement / balance sheet / cash flow.
+FMP and Brapi are only used when an API key is configured.
 """
 
 import argparse
@@ -74,19 +74,19 @@ def extract_fundamentals_real(
     ticker: str,
     raw_dir: Path,
 ) -> Dict[str, List[dict]]:
-    """Extrai demonstrações de fontes reais (CVM e yfinance)."""
+    """Extract statements from real sources (CVM and yfinance)."""
     payloads: Dict[str, List[dict]] = {}
 
-    # --- CVM dados abertos ---
+    # --- CVM open data ---
     cvm_stmts = cvm.fetch_annual_statements()
     for stmt in STATEMENTS:
         df = cvm_stmts.get(stmt, pd.DataFrame())
         if df.empty:
             continue
-        # CVM retorna valores em milhares (ESCALA_MOEDA = MIL). Multiplica por 1.000.
+        # CVM reports values in thousands (ESCALA_MOEDA = MIL); multiply by 1,000.
         df = df.copy()
         df["value"] = df["value"] * 1_000.0
-        # Remove duplicatas: mesma conta+data, fica com o maior valor absoluto
+        # Drop duplicates: same account + date, keep the largest absolute value
         df = df.sort_values("value", key=lambda s: s.abs(), ascending=False)
         df = df.drop_duplicates(subset=["fiscal_date", "account_code"], keep="first")
         rows = (
@@ -102,7 +102,7 @@ def extract_fundamentals_real(
             raw_dir / f"{ticker}_cvm_{stmt}.json",
         )
 
-    # --- yfinance demonstrações (fallback / complemento) ---
+    # --- yfinance statements (fallback / complement) ---
     yf_stmts = yf.fetch_annual_statements(ticker)
     for stmt in STATEMENTS:
         df = yf_stmts.get(stmt, pd.DataFrame())
@@ -128,14 +128,14 @@ def extract_fundamentals_mock(
     ticker: str,
     raw_dir: Path,
 ) -> Dict[str, List[dict]]:
-    """Extrai de FMP/Brapi somente se houver API key. Senão, retorna vazio."""
+    """Extract from FMP/Brapi only when an API key exists; otherwise return empty."""
     payloads: Dict[str, List[dict]] = {}
     if fmp is not None:
         for stmt in STATEMENTS:
             try:
                 rows = getattr(fmp, stmt)(ticker)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("FMP %s falhou: %s", stmt, exc)
+                logger.warning("FMP %s failed: %s", stmt, exc)
                 rows = []
             payloads[f"fmp_{stmt}"] = rows
             save_json(
@@ -147,7 +147,7 @@ def extract_fundamentals_mock(
             try:
                 rows = brapi.financials(ticker, statement=stmt)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Brapi %s falhou: %s", stmt, exc)
+                logger.warning("Brapi %s failed: %s", stmt, exc)
                 rows = []
             payloads[f"brapi_{stmt}"] = rows
             save_json(
@@ -163,6 +163,7 @@ def transform_all(
     ticker: str,
     currency: str,
     processed_dir: Path,
+    source: str = "cvm_or_yf",
 ) -> Dict[str, pd.DataFrame]:
     out: Dict[str, pd.DataFrame] = {}
 
@@ -172,7 +173,7 @@ def transform_all(
 
     frames: Dict[str, pd.DataFrame] = {}
     for stmt in STATEMENTS:
-        # Prefere CVM, depois yfinance, depois FMP/Brapi
+        # Prefer CVM, then yfinance, then FMP/Brapi
         rows = (
             fundamentals.get(f"cvm_{stmt}")
             or fundamentals.get(f"yf_{stmt}")
@@ -180,7 +181,7 @@ def transform_all(
             or fundamentals.get(f"brapi_{stmt}")
             or fundamentals.get(f"mock_{stmt}", [])
         )
-        frames[stmt] = tidy(rows, stmt, ticker, currency=currency, source="cvm_or_yf")
+        frames[stmt] = tidy(rows, stmt, ticker, currency=currency, source=source)
         save_parquet(frames[stmt], processed_dir / f"{ticker}_{stmt}.parquet")
 
     combined = combine(frames)
@@ -237,7 +238,7 @@ def run(ticker: str, period: str, mock: bool, config_path: Path, output: Path) -
     yf, cvm, fmp, brapi = build_clients(config, ticker, mock)
 
     if mock:
-        logger.warning("Modo MOCK ativado — dados sintéticos de tests/fixtures/mocks.py (offline)")
+        logger.warning("MOCK mode enabled — synthetic data from tests/fixtures/mocks.py (offline)")
         from tests.fixtures import mocks  # noqa: PLC0415
 
         fundamentals: Dict[str, List[dict]] = {
@@ -246,7 +247,7 @@ def run(ticker: str, period: str, mock: bool, config_path: Path, output: Path) -
             "mock_cash_flow": mocks.STATEMENTS.cash_flow,
         }
         price_frame = mocks.price_frame(period)
-        result = transform_all(price_frame, fundamentals, ticker, config.get("currency", "BRL"), processed)
+        result = transform_all(price_frame, fundamentals, ticker, config.get("currency", "BRL"), processed, source="mock")
         geo = tidy(mocks.STATEMENTS.geographic_revenue, "geographic_revenue", ticker,
                    currency=config.get("currency", "BRL"), source="mock")
         result["geographic_revenue"] = geo
@@ -279,8 +280,8 @@ def main() -> None:
     p = argparse.ArgumentParser(description="WEGE3.SA ETL pipeline")
     p.add_argument("--ticker", default="WEGE3.SA")
     p.add_argument("--period", default="5y")
-    p.add_argument("--mock", action="store_true", default=False, help="Usa dados sintéticos de tests/fixtures/")
-    p.add_argument("--live", action="store_true", help="Força modo real (mesmo sem --mock)")
+    p.add_argument("--mock", action="store_true", default=False, help="Use synthetic data from tests/fixtures/")
+    p.add_argument("--live", action="store_true", help="Force live mode (even without --mock)")
     p.add_argument("--config", default="config/settings.yaml")
     p.add_argument("--output", default=".")
     p.add_argument("--verbose", action="store_true")

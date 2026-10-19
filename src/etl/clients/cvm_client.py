@@ -1,9 +1,9 @@
-"""CVM dados abertos client (sem API key necessária).
+"""CVM open-data client (no API key required).
 
-Baixa DFP (Demonstrações Financeiras Padronizadas) do portal de dados abertos
-da CVM: https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/
+Downloads DFP (standardised annual financial statements) from the open-data portal
+CVM: https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/
 
-Estrutura: dfp_cia_aberta_YYYY.zip contendo CSVs de DRE, BPP, DFC, etc.
+Layout: dfp_cia_aberta_YYYY.zip containing CSVs for DRE, BPP, DFC, etc.
 WEG S.A.: CNPJ 84.429.695/0001-11
 """
 
@@ -24,17 +24,17 @@ WEG_CNPJ = "84429695000111"
 
 _DFP_BASE = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/"
 
-# Mapeia prefixo do arquivo CSV dentro do ZIP para o tipo de demonstrativo
+# Maps the CSV file prefix inside the ZIP to the statement type
 _STATEMENT_PREFIX: Dict[str, str] = {
     "DRE": "income",
     "BPP": "balance_sheet",
     "DFC": "cash_flow",
-    "DRA": "income",  # DRE acumulado
-    "BPA": "balance_sheet",  # Balanço patrimonial ativo
+    "DRA": "income",  # cumulative income statement
+    "BPA": "balance_sheet",  # Balance sheet, assets
     "BPP": "balance_sheet",
 }
 
-# Colunas nos CSVs da CVM (podem variar por ano)
+# Column names in the CVM CSVs (may vary by year)
 _COLUMN_ALIASES: Dict[str, List[str]] = {
     "cnpj": ["CNPJ_CIA", "CNPJ"],
     "ref_date": ["DT_REF", "DATA_REFERENCIA", "DT_FIM_EXERC"],
@@ -45,7 +45,7 @@ _COLUMN_ALIASES: Dict[str, List[str]] = {
 
 
 class CvmClient:
-    """Cliente para DFP da CVM (dados abertos)."""
+    """Client for CVM DFP filings (open data)."""
 
     def __init__(self, timeout: float = 60.0) -> None:
         self.timeout = timeout
@@ -54,17 +54,17 @@ class CvmClient:
 
     def _download_dfp_zip(self, year: int) -> Optional[bytes]:
         url = f"{_DFP_BASE}dfp_cia_aberta_{year}.zip"
-        logger.info("Baixando DFP %d: %s", year, url)
+        logger.info("Downloading DFP %d: %s", year, url)
         try:
             resp = self._session.get(url, timeout=self.timeout)
             resp.raise_for_status()
             return resp.content
         except requests.RequestException as exc:
-            logger.error("Falha ao baixar %s: %s", url, exc)
+            logger.error("Failed to download %s: %s", url, exc)
             return None
 
     def _extract_csvs(self, zip_bytes: bytes) -> Dict[str, pd.DataFrame]:
-        """Extrai CSVs do ZIP, indexados por tipo de demonstrativo (DRE, BPP, DFC...)."""
+        """Extract CSVs from the ZIP, keyed by statement type (DRE, BPP, DFC...)."""
         out: Dict[str, pd.DataFrame] = {}
         try:
             with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
@@ -86,11 +86,11 @@ class CvmClient:
                                 out[stmt_type] = pd.concat([out[stmt_type], df], ignore_index=True)
                             else:
                                 out[stmt_type] = df
-                            logger.info("Lido %s (%d linhas, %s)", name, len(df), stmt_type)
+                            logger.info("Read %s (%d rows, %s)", name, len(df), stmt_type)
                     except Exception as exc:  # noqa: BLE001
-                        logger.warning("Falha ao ler %s: %s", name, exc)
+                        logger.warning("Failed to read %s: %s", name, exc)
         except zipfile.BadZipFile as exc:
-            logger.error("ZIP inválido: %s", exc)
+            logger.error("Invalid ZIP: %s", exc)
         return out
 
     def _filter_weg(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -108,7 +108,7 @@ class CvmClient:
         return None
 
     def fetch_annual_statements(self, years: Optional[List[int]] = None) -> Dict[str, pd.DataFrame]:
-        """Extrai DRE, BPP e DFC da CVM para a WEG, anos disponíveis."""
+        """Extract income statement, balance sheet and cash flow for WEG from CVM, for the available years."""
         if years is None:
             years = [2024, 2023, 2022, 2021, 2020]
 

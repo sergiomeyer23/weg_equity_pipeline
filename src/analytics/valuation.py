@@ -95,7 +95,7 @@ class DCF:
 
         w = self.wacc(rf)
         if w <= a.term_growth:
-            raise ValueError(f"WACC ({w:.2%}) deve ser maior que o crescimento terminal ({a.term_growth:.2%}).")
+            raise ValueError(f"WACC ({w:.2%}) must exceed terminal growth ({a.term_growth:.2%}).")
         disc = [(1.0 + w) ** -(i + 1) for i in range(len(fcfs))]
         pv_exp = sum(c * d for c, d in zip(fcfs, disc))
         term = fcfs[-1] * (1.0 + a.term_growth) / (w - a.term_growth)
@@ -127,10 +127,41 @@ class DCF:
 
 
 def bridge(r: DCFResult) -> pd.DataFrame:
+    adj = r.equity - r.ev  # > 0 with net cash, < 0 with net debt
     return pd.DataFrame([
-        ("PV explicit FCFF", r.pv_explicit),
-        ("PV terminal value", r.pv_terminal),
+        ("PV of explicit FCFF", r.pv_explicit),
+        ("PV of terminal value", r.pv_terminal),
         ("Enterprise value", r.ev),
-        ("Less: net debt", r.ev - r.equity),
+        ("Net cash" if adj >= 0 else "Net debt", adj),
         ("Equity value", r.equity),
     ], columns=["item", "value"])
+
+
+def tornado(
+    a: Assumptions,
+    base_rev: float,
+    net_debt: float,
+    shares: float,
+    intl_share: float,
+    fx_base: float = 5.10,
+) -> pd.DataFrame:
+    """Target-price impact of flexing one assumption at a time (low/high)."""
+    from dataclasses import replace
+
+    def price(**kw: Any) -> float:
+        fx = kw.pop("fx", None)
+        return DCF(replace(a, **kw)).run(base_rev, None, net_debt, shares, intl_share, fx, fx_base).target_price
+
+    base = price()
+    shocks = [
+        ("EBIT margin ±3 pp", price(ebit_margin=a.ebit_margin - 0.03), price(ebit_margin=a.ebit_margin + 0.03)),
+        ("Selic ±2.5 pp", price(rf=a.rf + 0.025), price(rf=a.rf - 0.025)),
+        ("Terminal growth ±1 pp", price(term_growth=a.term_growth - 0.01), price(term_growth=a.term_growth + 0.01)),
+        ("Beta ±0.2", price(beta=a.beta + 0.2), price(beta=a.beta - 0.2)),
+        ("Capex ±1 pp of revenue", price(capex_ratio=a.capex_ratio + 0.01), price(capex_ratio=a.capex_ratio - 0.01)),
+        ("USD/BRL 4.40 / 5.80", price(fx=4.40), price(fx=5.80)),
+    ]
+    df = pd.DataFrame(shocks, columns=["driver", "low", "high"])
+    df["base"] = base
+    df["range"] = (df["high"] - df["low"]).abs()
+    return df.sort_values("range", ascending=True).reset_index(drop=True)

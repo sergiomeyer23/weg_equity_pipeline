@@ -64,7 +64,7 @@ class YFinanceClient(BaseClient):
         return PriceFrame(ticker=ticker, prices=df, info=tk.info or {})
 
     def fetch_annual_statements(self, ticker: str) -> Dict[str, pd.DataFrame]:
-        """Extrai DRE, balanço e fluxo de caixa do yfinance (sem API key)."""
+        """Extract income statement, balance sheet and cash flow from yfinance (no API key)."""
         tk = yf.Ticker(ticker)
         out: Dict[str, pd.DataFrame] = {}
         for name, attr in (

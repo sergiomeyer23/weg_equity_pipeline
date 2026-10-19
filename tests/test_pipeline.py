@@ -1,8 +1,8 @@
-"""Testes de qualidade para o pipeline WEGE3.SA.
+"""Quality tests for the WEGE3.SA pipeline.
 
-Substitui os antigos testes tautológicos (que apenas confirmavam que o mock
-é consistente consigo mesmo) por: (a) validação do DCF contra cálculo manual
-independente e (b) comparação de dados reais da CVM contra valores publicados.
+Replaces the old tautological tests (which only proved the mock was consistent
+with itself) with: (a) DCF validation against an independent manual calculation
+and (b) a comparison of real CVM data against published figures.
 """
 
 from __future__ import annotations
@@ -20,27 +20,27 @@ _PROCESSED = Path(__file__).resolve().parent.parent / "data" / "processed"
 def _load_wide() -> pd.DataFrame:
     path = _PROCESSED / "WEGE3.SA_statements_wide.parquet"
     if not path.exists():
-        pytest.skip("Rode o ETL antes: python -m src.etl.ingestion --mock")
+        pytest.skip("Run the ETL first: python -m src.etl.ingestion --mock")
     return pd.read_parquet(path)
 
 
 # ----------------------------------------------------------------------
-# (a) DCF contra cálculo manual independente
+# (a) DCF against an independent manual calculation
 # ----------------------------------------------------------------------
 def test_dcf_matches_manual_calculation() -> None:
-    """DCF deve reproduzir um cálculo manual passo a passo em caso simples.
+    """The DCF must reproduce a step-by-step manual calculation on a simple case.
 
-    Cenário: receita base R$ 100M, crescimento 0%, margem EBIT 20%,
-    imposto 25%, sem D&A, sem CAPEX, sem capital de giro, crescimento
-    perpétuo 0%, WACC 10%, sem dívida líquida, 10M de ações.
+    Scenario: base revenue BRL 100M, 0% growth, 20% EBIT margin,
+    25% tax, no D&A, no capex, no working capital, 0% perpetual
+    growth, 10% WACC, no net debt, 10M shares.
 
-    FCFF anual = 100 * 0.20 * (1 - 0.25) = 15M (constante)
-    PV explícito (5 anos) = 15 * sum(1.1^-i, i=1..5) = 56.86M
-    Valor terminal = 15 / 0.10 = 150M (g=0)
-    PV terminal = 150 * 1.1^-5 = 93.14M
+    Annual FCFF = 100 * 0.20 * (1 - 0.25) = 15M (constant)
+    Explicit PV (5 years) = 15 * sum(1.1^-i, i=1..5) = 56.86M
+    Terminal value = 15 / 0.10 = 150M (g=0)
+    Terminal PV = 150 * 1.1^-5 = 93.14M
     EV = 56.86 + 93.14 = 150.0M
     Equity = 150.0 - 0 = 150.0M
-    Preço = 150.0 / 10 = R$ 15.00
+    Price = 150.0 / 10 = BRL 15.00
     """
     model = valuation.DCF()
     a = valuation.Assumptions(
@@ -61,8 +61,8 @@ def test_dcf_matches_manual_calculation() -> None:
     )
     model.a = a
 
-    # Cálculo manual independente
-    fcf = 100.0 * 0.20 * (1.0 - 0.25)  # 15M por ano
+    # Independent manual calculation
+    fcf = 100.0 * 0.20 * (1.0 - 0.25)  # 15M per year
     wacc = 0.08 + 1.0 * 0.02  # 10%
     dfs = [(1.0 + wacc) ** -(i + 1) for i in range(5)]
     pv_explicit = sum(fcf * d for d in dfs)
@@ -79,7 +79,7 @@ def test_dcf_matches_manual_calculation() -> None:
 
 
 def test_dcf_sensitivity_direction() -> None:
-    """Selic maior → WACC maior → preço-alvo menor (ceteris paribus)."""
+    """Higher Selic → higher WACC → lower target price (ceteris paribus)."""
     model = valuation.DCF()
     g = model.grid(
         base_rev=52_400.0,
@@ -90,37 +90,37 @@ def test_dcf_sensitivity_direction() -> None:
         fxs=[5.10],
         selics=[0.0925, 0.1175, 0.1425],
     )
-    # Uma única coluna de FX; três linhas de Selic
+    # A single FX column; three Selic rows
     assert g.shape == (3, 1)
     assert g.loc[0.1425, 5.10] < g.loc[0.1175, 5.10] < g.loc[0.0925, 5.10]
 
 
 # ----------------------------------------------------------------------
-# (b) Dados reais da CVM contra valores publicados
+# (b) Real CVM data against published figures
 # ----------------------------------------------------------------------
 def test_cvm_revenue_ebit_net_income_2024() -> None:
-    """Receita, EBIT e lucro líquido 2024 da CVM devem bater com o RI da WEG.
+    """2024 revenue, EBIT and net income from CVM must match WEG's IR figures.
 
-    Valores de referência do DFP 2024 da WEG S.A. (CVM dados abertos):
-    - Receita líquida: ~R$ 37,99 bi
+    Reference values from WEG S.A.'s 2024 DFP (CVM open data):
+    - Net revenue: ~BRL 37.99 bn
     - EBIT (Resultado antes do resultado financeiro): ~R$ 7,69 bi
-    - Lucro líquido: ~R$ 6,04 bi
+    - Net income: ~BRL 6.04 bn
 
-    Tolerância: 5% (diferenças podem surgir de classificação contábil).
+    Tolerance: 5% (differences may stem from accounting classification).
     """
     wide = _load_wide()
     if "Receita de Venda de Bens e/ou Serviços" not in wide.columns:
-        pytest.skip("Dados da CVM ausentes (rode o ETL sem --mock).")
+        pytest.skip("CVM data missing (run the ETL without --mock).")
     row = wide[wide["fiscal_year"] == 2024].iloc[0]
 
     revenue = float(row["Receita de Venda de Bens e/ou Serviços"])
     ebit = float(row["Resultado Antes do Resultado Financeiro e dos Tributos"])
 
-    # Lucro líquido pode ter nomes diferentes no DFP
+    # Net income may carry different account names in the DFP
     ni_cols = [c for c in wide.columns if "Lucro" in c and "Período" in c]
     net_income = float(row[ni_cols[0]]) if ni_cols else float("nan")
 
-    # Valores de referência do DFP 2024 (valores em reais, não milhões)
+    # 2024 DFP reference values (in reais, not millions)
     expected_revenue = 37_986_941_000.0
     expected_ebit = 7_690_528_000.0
     expected_ni = 6_042_593_000.0
@@ -133,22 +133,22 @@ def test_cvm_revenue_ebit_net_income_2024() -> None:
 
 
 def test_roic_positive_and_reasonable() -> None:
-    """ROIC deve ser positivo e razoável (não 40% inventado)."""
+    """ROIC must be positive and reasonable (not an invented 40%)."""
     wide = _load_wide()
     roic = kpis.compute_roic(wide)
     assert (roic["roic"] > 0).all()
-    assert (roic["roic"] < 1.0).all()  # não pode ser > 100%
+    assert (roic["roic"] < 1.0).all()  # cannot exceed 100%
 
 
 def test_leverage_reasonable() -> None:
-    """Alavancagem deve ser baixa (WEG tem balanço conservador)."""
+    """Leverage must be low (WEG has a conservative balance sheet)."""
     wide = _load_wide()
     lev = kpis.compute_leverage(wide)
     assert (lev["debt_to_equity"] < 1.0).all()
 
 
 def test_files_exist() -> None:
-    """Artefatos do ETL devem existir após a execução."""
-    _load_wide()  # pula se o ETL não rodou
+    """ETL artefacts must exist after a run."""
+    _load_wide()  # skips if the ETL has not run
     assert (_PROCESSED / "WEGE3.SA_prices.parquet").exists()
     assert (_PROCESSED / "WEGE3.SA_statements_wide.parquet").exists()

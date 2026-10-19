@@ -2,7 +2,7 @@
 
 Internally consistent 5-year income statement, balance sheet, and cash flow.
 Figures are in BRL millions and roughly match WEG's order of magnitude.
-MOVIDO DE src/etl/clients/mocks.py — código em src/ não pode conter dados inventados.
+Moved from src/etl/clients/mocks.py: code under src/ must not contain made-up data.
 """
 
 from dataclasses import dataclass
@@ -228,7 +228,7 @@ STATEMENTS = build()
 
 
 def price_frame(period: str = "5y", seed: int = 42):
-    """Série de preços sintética (random walk determinístico) para uso offline."""
+    """Synthetic price series (deterministic random walk) for offline use."""
     import numpy as np
     import pandas as pd
 

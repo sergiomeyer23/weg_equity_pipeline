@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-# Cada chave mapeia para uma lista de possíveis nomes de coluna no DataFrame.
-# O CVM (dados abertos) usa português; o yfinance usa inglês. Aceitamos ambos.
+# Each key maps to a list of possible column names in the DataFrame.
+# CVM open data uses Portuguese account names (kept verbatim: they are the source
+# labels); yfinance uses English. Both are accepted.
 LINE: Dict[str, List[str]] = {
     "revenue": ["Revenue", "Receita de Venda de Bens e/ou Serviços", "Receita Líquida"],
     "cost_of_revenue": ["Cost of Revenue", "Custo dos Bens e/ou Serviços Vendidos"],
@@ -27,10 +28,10 @@ LINE: Dict[str, List[str]] = {
 
 
 def _get(df: pd.DataFrame, year: int, names: List[str]) -> Optional[float]:
-    """Busca o primeiro valor não-nulo entre os nomes de coluna possíveis.
+    """Return the first non-null value among the candidate column names.
 
-    Tenta correspondência exata primeiro; se falhar, tenta substring
-    (case-insensitive) para lidar com variações do DFP da CVM.
+    Tries an exact match first; if that fails, falls back to a case-insensitive
+    substring match to cope with variations in CVM DFP account names.
     """
     for key in names:
         if key in df.columns:

@@ -1,1 +1,1 @@
-"""Fixtures sintéticos para testes unitários."""
+"""Synthetic fixtures for unit tests."""
