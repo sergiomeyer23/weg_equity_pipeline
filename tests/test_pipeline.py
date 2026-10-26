@@ -152,3 +152,80 @@ def test_files_exist() -> None:
     _load_wide()  # skips if the ETL has not run
     assert (_PROCESSED / "WEGE3.SA_prices.parquet").exists()
     assert (_PROCESSED / "WEGE3.SA_statements_wide.parquet").exists()
+
+
+# ----------------------------------------------------------------------
+# (c) Regressions found in the audit
+# ----------------------------------------------------------------------
+def test_dcf_fx_is_level_not_compounded() -> None:
+    """A weaker BRL should lift the revenue level once, not every year."""
+    a = valuation.Assumptions(
+        years=5,
+        growth=[0.05, 0.05, 0.05, 0.05, 0.05],
+        ebit_margin=0.20,
+        tax=0.25,
+        da_ratio=0.0,
+        capex_ratio=0.0,
+        wc_ratio=0.0,
+        term_growth=0.0,
+        rf=0.08,
+        erp=0.02,
+        beta=1.0,
+        debt_spread=0.0,
+        tax_rate=0.25,
+        target_debt_v=0.0,
+    )
+    model = valuation.DCF(a)
+    base = model.run(100.0, net_debt=0.0, shares=10.0, intl_share=0.4, fx=5.10)
+    shock = model.run(100.0, net_debt=0.0, shares=10.0, intl_share=0.4, fx=5.80)
+
+    factor = 0.6 + 0.4 * (5.80 / 5.10)
+    assert shock.rev[0] == pytest.approx(base.rev[0] * factor)
+    assert shock.rev[1] == pytest.approx(base.rev[1] * factor)
+    assert shock.rev[2] / shock.rev[1] == pytest.approx(base.rev[2] / base.rev[1])
+
+
+def test_total_debt_sums_current_and_noncurrent() -> None:
+    """Both CVM debt lines must be added, not collapsed into one."""
+    wide = pd.DataFrame({
+        "fiscal_year": [2024],
+        "Total Equity": [100.0],
+        "Empréstimos e Financiamentos (Circulante)": [10.0],
+        "Empréstimos e Financiamentos (Não Circulante)": [30.0],
+        "Debêntures (Não Circulante)": [5.0],
+        "Caixa e Equivalentes": [20.0],
+    })
+    lev = kpis.compute_leverage(wide)
+
+    assert lev.iloc[0]["total_debt"] == pytest.approx(45.0)
+    assert lev.iloc[0]["net_debt"] == pytest.approx(25.0)
+
+
+def test_total_debt_accepts_legacy_collapsed_label() -> None:
+    """Old processed files only have the generic CVM label."""
+    wide = pd.DataFrame({
+        "fiscal_year": [2024],
+        "Total Equity": [100.0],
+        "Empréstimos e Financiamentos": [25.0],
+    })
+    lev = kpis.compute_leverage(wide)
+
+    assert lev.iloc[0]["total_debt"] == pytest.approx(25.0)
+
+
+def test_cash_flow_derives_fcf_from_ocf_and_capex() -> None:
+    """CVM has no FCF line; the report must derive it instead of dropping the year."""
+    wide = pd.DataFrame({
+        "fiscal_year": [2024],
+        "Caixa Líquido Atividades Operacionais": [100.0],
+        "Capital Expenditure": [-40.0],
+        "Capital Expenditure (Intangibles)": [-10.0],
+    })
+    cf = kpis.compute_cash_flow(wide)
+
+    assert cf.iloc[0]["ocf"] == pytest.approx(100.0)
+    assert cf.iloc[0]["capex"] == pytest.approx(-50.0)
+    assert cf.iloc[0]["fcf"] == pytest.approx(50.0)
+
+    fcf = kpis.compute_fcf_yield(wide, market_cap=1_000.0)
+    assert fcf.iloc[0]["fcf_yield"] == pytest.approx(0.05)

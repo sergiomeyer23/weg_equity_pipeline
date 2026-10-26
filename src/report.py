@@ -29,14 +29,7 @@ def analyse(ds: Dataset, years: Optional[tuple] = None) -> Analysis:
     wide = ds.wide
     if years:
         wide = wide[wide["fiscal_year"].between(*years)].reset_index(drop=True)
-    cf = []
-    for y in wide["fiscal_year"]:
-        cf.append({
-            "fiscal_year": int(y),
-            "ocf": kpis._get(wide, int(y), kpis.LINE["operating_cf"]),
-            "capex": kpis._get(wide, int(y), kpis.LINE["capex"]),
-            "fcf": kpis._get(wide, int(y), kpis.LINE["fcf"]),
-        })
+    cf = kpis.compute_cash_flow(wide)
     lev = kpis.compute_leverage(wide)
     geo = ds.geo
     if geo is not None and years:
@@ -47,7 +40,7 @@ def analyse(ds: Dataset, years: Optional[tuple] = None) -> Analysis:
         roic=kpis.compute_roic(wide),
         leverage=lev,
         fcf=kpis.compute_fcf_yield(wide, ds.meta["market_cap"]),
-        cash_flow=pd.DataFrame(cf).dropna(),
+        cash_flow=cf,
         geo=geo,
         market_px=float(ds.prices["close"].iloc[-1]),
         intl_share=intl,

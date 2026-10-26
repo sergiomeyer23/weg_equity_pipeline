@@ -61,7 +61,7 @@ def tidy(
         val = row.get("value")
         if item is None:
             for key, value in row.items():
-                if key in {"date", "symbol", "reportedCurrency", "cik", "fillingDate", "acceptedDate", "calendarYear", "period"}:
+                if key in {"date", "symbol", "reportedCurrency", "cik", "fillingDate", "acceptedDate", "calendarYear", "period", "account_code"}:
                     continue
                 if value is None:
                     continue

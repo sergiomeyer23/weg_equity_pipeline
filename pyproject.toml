@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weg-equity-pipeline"
-version = "1.0.0"
-description = "Institutional-grade fundamental analysis pipeline for WEG S.A. (WEGE3.SA) on B3"
+version = "1.1.0"
+description = "Fundamental analysis pipeline for WEG S.A. (WEGE3.SA) on B3: CVM/Yahoo ETL, KPIs, DCF and Streamlit dashboard"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "Quantitative Equity Research", email = "research@example.com"}]
+authors = [{name = "Sérgio Meyer", email = "sergio.gabriel.meyer10@gmail.com"}]
 keywords = ["equity-research", "dcf", "valuation", "b3", "wege3", "fundamental-analysis"]
 dependencies = [
     "pandas>=2.0.0",
@@ -26,6 +26,16 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "black>=23.0", "ruff>=0.1.0", "mypy>=1.0"]
 dashboard = ["streamlit>=1.28.0"]
+
+[project.urls]
+Homepage = "https://github.com/sergiomeyer23/weg_equity_pipeline"
+Repository = "https://github.com/sergiomeyer23/weg_equity_pipeline"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["src*"]
 
 [tool.black]
 line-length = 88

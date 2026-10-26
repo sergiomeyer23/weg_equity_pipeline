@@ -91,8 +91,22 @@ def extract_fundamentals_real(
                 "Imobilizado": "Capital Expenditure",
                 "Intangível": "Capital Expenditure (Intangibles)",
             })
+        if stmt == "balance_sheet" and "account_code" in df.columns:
+            # CVM repeats "Empréstimos e Financiamentos" and "Debêntures" in the
+            # current (2.01) and non-current (2.02) liabilities. Without this,
+            # the pivot keeps only one of them and understates total debt.
+            code = df["account_code"].astype(str)
+            desc = df["account_desc"].astype(str)
+            is_debt = desc.isin(["Empréstimos e Financiamentos", "Debêntures"])
+            current = is_debt & code.str.startswith("2.01")
+            noncurrent = is_debt & code.str.startswith("2.02")
+            df.loc[current, "account_desc"] = desc[current] + " (Circulante)"
+            df.loc[noncurrent, "account_desc"] = desc[noncurrent] + " (Não Circulante)"
+        columns = ["fiscal_date", "value", "account_desc", "statement", "source"]
+        if "account_code" in df.columns:
+            columns.insert(3, "account_code")
         rows = (
-            df[["fiscal_date", "value", "account_desc", "statement", "source"]]
+            df[columns]
             .rename(columns={"fiscal_date": "date", "account_desc": "line_item"})
             .to_dict(orient="records")
         )

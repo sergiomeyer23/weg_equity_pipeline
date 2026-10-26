@@ -19,8 +19,20 @@ LINE: Dict[str, List[str]] = {
     "total_equity": ["Total Equity", "Patrimônio Líquido", "Total do Patrimônio Líquido"],
     "cash": ["Cash and Equivalents", "Caixa e Equivalentes", "Caixa"],
     "cash_eop": ["Cash and Equivalents (EoP)", "Saldo Final de Caixa e Equivalentes", "Saldo Final de Caixa"],
-    "short_term_debt": ["Short-Term Debt", "Dívida de Curto Prazo", "Empréstimos e Financiamentos"],
-    "long_term_debt": ["Long-Term Debt", "Dívida de Longo Prazo", "Debêntures"],
+    # CVM reports "Empréstimos e Financiamentos" twice (current and non-current).
+    # The ETL disambiguates the labels by account code before pivoting.
+    "short_term_debt": [
+        "Short-Term Debt",
+        "Dívida de Curto Prazo",
+        "Empréstimos e Financiamentos (Circulante)",
+    ],
+    "long_term_debt": [
+        "Long-Term Debt",
+        "Dívida de Longo Prazo",
+        "Empréstimos e Financiamentos (Não Circulante)",
+        "Debêntures (Não Circulante)",
+        "Debêntures",
+    ],
     "fcf": ["Free Cash Flow", "Fluxo de Caixa Livre", "FCF"],
     "operating_cf": ["Operating Cash Flow", "Caixa Líquido Atividades Operacionais", "OCF"],
     "capex": ["Capital Expenditure", "Investimento em Imobilizado", "CAPEX"],
@@ -53,6 +65,38 @@ def _get(df: pd.DataFrame, year: int, names: List[str]) -> Optional[float]:
     return None
 
 
+def _sum_matching(df: pd.DataFrame, year: int, names: List[str]) -> Optional[float]:
+    """Sum every exact-match column that has a value for ``year``.
+
+    Unlike ``_get``, this keeps both the current and the non-current portion of
+    a debt line instead of silently dropping one of them.
+    """
+    total = 0.0
+    found = False
+    row = df.loc[df["fiscal_year"] == year]
+    if row.empty:
+        return None
+    for key in names:
+        if key in df.columns:
+            val = row.iloc[0][key]
+            if pd.notna(val):
+                total += float(val)
+                found = True
+    return total if found else None
+
+
+def _total_debt(df: pd.DataFrame, year: int) -> Optional[float]:
+    """Total debt = current + non-current, with a fallback for legacy data."""
+    short = _sum_matching(df, year, LINE["short_term_debt"])
+    long = _sum_matching(df, year, LINE["long_term_debt"])
+    if short is None and long is None:
+        # Older processed files only carry the collapsed CVM label.
+        short = _sum_matching(df, year, ["Empréstimos e Financiamentos"])
+    if short is None and long is None:
+        return None
+    return (short or 0.0) + (long or 0.0)
+
+
 def compute_roic(df: pd.DataFrame, tax_rate: Optional[float] = None) -> pd.DataFrame:
     """ROIC = NOPAT / Invested Capital."""
     rows: List[Dict[str, Any]] = []
@@ -63,13 +107,11 @@ def compute_roic(df: pd.DataFrame, tax_rate: Optional[float] = None) -> pd.DataF
         tax = _get(df, year, LINE["income_tax"])
         equity = _get(df, year, LINE["total_equity"])
         cash = _get(df, year, LINE["cash_eop"]) or _get(df, year, LINE["cash"])
-        st = _get(df, year, LINE["short_term_debt"])
-        lt = _get(df, year, LINE["long_term_debt"])
+        debt = _total_debt(df, year)
 
-        if ebit is None or equity is None:
+        if ebit is None or equity is None or debt is None:
             continue
 
-        debt = (st or 0.0) + (lt or 0.0)
         if tax_rate is None and ebt:
             rate = min(max(abs((tax or 0.0) / ebt), 0.0), 0.40)
         else:
@@ -119,12 +161,10 @@ def compute_leverage(df: pd.DataFrame) -> pd.DataFrame:
     for _, row in df.iterrows():
         year = int(row["fiscal_year"])
         equity = _get(df, year, LINE["total_equity"])
-        st = _get(df, year, LINE["short_term_debt"])
-        lt = _get(df, year, LINE["long_term_debt"])
+        debt = _total_debt(df, year)
         cash = _get(df, year, LINE["cash_eop"]) or _get(df, year, LINE["cash"])
-        if equity is None or equity == 0:
+        if equity is None or equity == 0 or debt is None:
             continue
-        debt = (st or 0.0) + (lt or 0.0)
         rows.append({
             "fiscal_year": year,
             "total_debt": debt,
@@ -136,26 +176,44 @@ def compute_leverage(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("fiscal_year", kind="mergesort").reset_index(drop=True)
 
 
-def compute_fcf_yield(df: pd.DataFrame, market_cap: float) -> pd.DataFrame:
+def compute_cash_flow(df: pd.DataFrame) -> pd.DataFrame:
+    """Operating cash flow, capex (negative) and FCF.
+
+    CVM does not publish a "Free Cash Flow" line, so FCF is derived from
+    operating cash flow less capex in PP&E and intangibles. This is the single
+    source of truth used by both the dashboard and the static report.
+    """
     rows: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
         year = int(row["fiscal_year"])
+        ocf = _get(df, year, LINE["operating_cf"])
+        if ocf is None:
+            continue
+        capex = abs(_get(df, year, ["Capital Expenditure"]) or 0.0)
+        capex_int = abs(_get(df, year, ["Capital Expenditure (Intangibles)"]) or 0.0)
+        total_capex = capex + capex_int
         fcf = _get(df, year, LINE["fcf"])
         if fcf is None:
-            # CVM has no FCF line, so build it: operating cash flow less capex (PP&E + intangibles)
-            ocf = _get(df, year, LINE["operating_cf"])
-            if ocf is None:
-                continue
-            capex = _get(df, year, ["Capital Expenditure"]) or 0.0
-            capex_int = _get(df, year, ["Capital Expenditure (Intangibles)"]) or 0.0
-            fcf = ocf - abs(capex) - abs(capex_int)
+            fcf = ocf - total_capex
         rows.append({
             "fiscal_year": year,
-            "free_cash_flow": fcf,
-            "market_cap": market_cap,
-            "fcf_yield": fcf / market_cap if market_cap else float("nan"),
+            "ocf": ocf,
+            "capex": -total_capex,
+            "fcf": fcf,
         })
+    if not rows:
+        return pd.DataFrame(columns=["fiscal_year", "ocf", "capex", "fcf"])
     return pd.DataFrame(rows).sort_values("fiscal_year", kind="mergesort").reset_index(drop=True)
+
+
+def compute_fcf_yield(df: pd.DataFrame, market_cap: float) -> pd.DataFrame:
+    cash = compute_cash_flow(df)
+    if cash.empty:
+        return pd.DataFrame(columns=["fiscal_year", "free_cash_flow", "market_cap", "fcf_yield"])
+    cash = cash.rename(columns={"fcf": "free_cash_flow"})
+    cash["market_cap"] = market_cap
+    cash["fcf_yield"] = cash["free_cash_flow"] / market_cap if market_cap else float("nan")
+    return cash[["fiscal_year", "free_cash_flow", "market_cap", "fcf_yield"]]
 
 
 def geographic_shares(geo_df: pd.DataFrame) -> pd.DataFrame:

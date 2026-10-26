@@ -80,11 +80,14 @@ class DCF:
         fx_f = fx / fx_base
         dom = 1.0 - intl_share
 
-        rev = base_rev
+        # FX is a level adjustment, not a growth rate: a weaker BRL raises the
+        # BRL value of international revenue once, and the result then grows at
+        # the nominal assumptions. Applying fx_f every year would compound it.
+        rev = base_rev * (dom + intl_share * fx_f) / (dom + intl_share)
         revs: List[float] = []
         fcfs: List[float] = []
         for g in a.growth[: a.years]:
-            rev = rev * (1.0 + g) * (dom + intl_share * fx_f) / (dom + intl_share)
+            rev = rev * (1.0 + g)
             revs.append(rev)
             ebit = rev * a.ebit_margin
             nopat = ebit * (1.0 - a.tax)
