@@ -185,6 +185,24 @@ def test_dcf_fx_is_level_not_compounded() -> None:
     assert shock.rev[2] / shock.rev[1] == pytest.approx(base.rev[2] / base.rev[1])
 
 
+def test_dcf_working_capital_scales_with_revenue_change() -> None:
+    """NWC investment is wc_ratio * delta revenue, not wc_ratio * revenue."""
+    kw = dict(
+        years=2, ebit_margin=0.0, tax=0.0, da_ratio=0.0, capex_ratio=0.0,
+        term_growth=0.0, rf=0.08, erp=0.02, beta=1.0, debt_spread=0.0,
+        tax_rate=0.0, target_debt_v=0.0,
+    )
+    growing = valuation.DCF(valuation.Assumptions(growth=[0.10, 0.10], wc_ratio=0.20, **kw))
+    res = growing.run(100.0, net_debt=0.0, shares=1.0, intl_share=0.0)
+    # rev: 110, 121 -> delta: 10, 11 -> FCFF = -0.20 * delta
+    assert res.fcf[0] == pytest.approx(-2.0)
+    assert res.fcf[1] == pytest.approx(-2.2)
+
+    flat = valuation.DCF(valuation.Assumptions(growth=[0.0, 0.0], wc_ratio=0.20, **kw))
+    res = flat.run(100.0, net_debt=0.0, shares=1.0, intl_share=0.0)
+    assert res.fcf == [0.0, 0.0]
+
+
 def test_total_debt_sums_current_and_noncurrent() -> None:
     """Both CVM debt lines must be added, not collapsed into one."""
     wide = pd.DataFrame({
