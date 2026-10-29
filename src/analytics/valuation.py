@@ -84,6 +84,7 @@ class DCF:
         # BRL value of international revenue once, and the result then grows at
         # the nominal assumptions. Applying fx_f every year would compound it.
         rev = base_rev * (dom + intl_share * fx_f) / (dom + intl_share)
+        prev_rev = rev
         revs: List[float] = []
         fcfs: List[float] = []
         for g in a.growth[: a.years]:
@@ -93,7 +94,8 @@ class DCF:
             nopat = ebit * (1.0 - a.tax)
             da = rev * a.da_ratio
             capex = rev * a.capex_ratio
-            wc = rev * a.wc_ratio
+            wc = (rev - prev_rev) * a.wc_ratio
+            prev_rev = rev
             fcfs.append(nopat + da - capex - wc)
 
         w = self.wacc(rf)
